@@ -1,0 +1,119 @@
+---
+title: "R-BI-project"
+author: "Melody "
+date: "2017/8/19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# White Wine quality analysis
+
+研究流程採⽤CRISP-DM來進⾏資料分析，此流程⼀共包含六個步驟：  
+Business Understanding、Data Understanding、Data Preparation、Modeling、Evaluation、Deployment  
+  
+##1.商業理解（BUSINESS UNDERSTANDING）
+本專案使⽤白酒組成成分與品質相關的資料集，希望可以藉由找出什麼樣的化學組成成分會間接或直接影響到白酒的品質，經過此分析，酒商可以根據此研究結果來製作更有質量的酒。
+
+##2.資料理解（DATA UNDERSTANDING）  
+本專案使⽤ UCI 之 Wine Quality Data Set 資料集，資料來源如下：
+https://archive.ics.uci.edu/ml/datasets/Wine+Quality  
+此資料集內有winequality-red.csv 及 winequality-white.csv 兩個⼦資料集，分別代表紅酒
+及⽩酒的品質資訊，由於資料內容相似，我們僅研究白酒的部分。  
+目標資料集共有4898筆資料、13個屬性（包含結果欄位），經檢查過後此資料集並無遺漏值  
+```{r}
+whiteWine<-read.csv("/Users/melody/Downloads/winequality-white.csv",header = T,sep=";")
+names(whiteWine)
+str(whiteWine)
+```
+  
+  
+```{r}
+par(mfrow = c(4,3))
+for (i in c(1:11)) {
+  plot(whiteWine[, i], jitter(whiteWine[, "quality"]), xlab = names(whiteWine)[i],
+       ylab = "quality" , col = "firebrick", cex = 0.8, cex.lab = 2)
+  abline(lm(whiteWine[, "quality"] ~ whiteWine[ ,i]), lty = 2, lwd = 2)
+}
+```
+###Visualizing Correlation Matrix of Attributes  
+```{r}
+library(corrplot)
+wineCor<- cor(whiteWine)
+corrplot(wineCor,tl.srt=45)
+```
+  
+  查看各屬性相關性後，發現alcohol和density與quality相關性最高，但兩屬性卻是呈現負相關，由圖表也可得知alcohol是好的predictor。    
+  ⾸先我們先將酒的品質做分類，此屬性原本為數值型態(0~10)，我們分成三個等級。  
+```{r}
+whiteWine$quality.level <- factor(ifelse(whiteWine$quality < 5, 0, 
+                                          ifelse(whiteWine$quality > 6, 2, 1)))
+dim(whiteWine)
+summary(whiteWine)
+```
+    
+#Data Preparation    
+```{r echo=FALSE ,message=FALSE}
+library(caret)
+library(klaR)
+library(e1071)
+library(kernlab)
+library(randomForest)
+library(ggplot2)
+```
+    
+##sampling    
+```{r}
+set.seed(1000)
+wine_sampling_vector <- createDataPartition(whiteWine$quality.level, p =
+                                              0.80, list = FALSE)
+whiteWine1 <- whiteWine[,-12]
+wine_train <- whiteWine1[wine_sampling_vector,]#training data
+wine_test <- whiteWine1[-wine_sampling_vector,] #testing data
+```
+#Modeling  
+##Naive bayes  
+```{r}
+train.knn <- train(quality.level ~., data=wine_train, method="knn")
+confusionMatrix(train.knn)
+plot(train.knn)
+```
+  
+##Random forest  
+```{r}
+train.rf <- train(quality.level ~., data=wine_train, method="rf")
+confusionMatrix(train.rf)
+```
+##SVM  
+```{r}
+train.svmRadial <- train(quality.level ~., data=wine_train, method="svmRadial", preProc=c("center", "scale"), fit=FALSE)
+confusionMatrix(train.svmRadial)
+plot(train.svmRadial)
+```
+
+#Evaluation  
+##Naive bayes  
+```{r}
+predict.knn <- predict(train.knn, wine_test)
+confusionMatrix(predict.knn, wine_test$quality.level)
+```
+##Random forest  
+```{r}
+predict.rf <- predict(train.rf, wine_test)
+confusionMatrix(predict.rf, wine_test$quality.level)
+```
+##SVM  
+```{r}
+predict.svmRadial <- predict(train.svmRadial, wine_test)
+confusionMatrix(predict.svmRadial, wine_test$quality.level)
+```
+##Model comparison  
+```{r}
+results <- resamples(list(svm=train.svmRadial,rf=train.rf, knn=train.knn))
+summary(results)
+```
+#Deployment  
+模型比較後，Random forest的準確度較高，因此選擇Random forest作為分析模型。  
+  
